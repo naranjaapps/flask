@@ -1,3 +1,5 @@
+import base64
+import os
 import time
 import uuid
 
@@ -9,8 +11,6 @@ from flask_restful import Resource, Api
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import Select
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium import webdriver
 import chromedriver_autoinstaller
 
@@ -41,15 +41,40 @@ def save_screenshot(driver, element= None):
         scroll_y_by = desired_y - current_y
         driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
+    ENCODING = 'utf-8'
+    IMAGE_NAME = 'screen.png'
+    JSON_NAME = 'output.json'
 
     file_name = getrandomfilepng()
     driver.save_screenshot(file_name)
 
-    return None
+    with open(file_name, "rb") as image_file:
+        byte_content = base64.b64encode(image_file.read())
+
+    # second: base64 encode read data
+    # result: bytes (again)
+    base64_bytes = base64.b64encode(byte_content)
+
+    # third: decode these bytes to text
+    # result: string (in utf-8)
+    base64_string = base64_bytes.decode(ENCODING)
+
+    # optional: doing stuff with the data
+    # result here: some dict
+    raw_data = {IMAGE_NAME: base64_string}
+
+    # now: encoding the data to json
+    # result: string
+    json_data = json.dumps(raw_data, indent=2)
+
+    os.remove(file_name)
+
+    return {"image": json_data}
 
 
 class JSon():
     pass
+
 
 def sunarp_event():
     URL = 'https://enlinea.sunarp.gob.pe/sunarpweb/pages/acceso/ingreso.faces'
@@ -60,6 +85,7 @@ def sunarp_event():
     CAPTCHA_USERNAME = "juan.chavez"
     CAPTCHA_PASSOWRD = "Xg464pA4"
     results = []
+    screenshots = []
 
     chromedriver_autoinstaller.install()
 
@@ -104,7 +130,7 @@ def sunarp_event():
         placa = driver.find_element(by=By.ID, value='frmPartidaDirecta:idTxtPlacas')
         placa.send_keys("ABC123")
 
-        shot = save_screenshot(driver=driver, element=placa)
+        screenshots.append(save_screenshot(driver=driver, element=placa))
 
         button = driver.find_element(by=By.ID, value="frmPartidaDirecta:btnBuscarVeh")
         button.click()
@@ -112,7 +138,7 @@ def sunarp_event():
         time.sleep(2)
 
         element = driver.find_element(by=By.ID, value="frmResultadoVeh:tblResultPartVeh_head")
-        shot = save_screenshot(driver=driver, element=element)
+        screenshots.append(save_screenshot(driver=driver, element=element))
 
         buttons = driver.find_elements(by=By.XPATH, value="//button[contains(@id, 'frmResultadoVeh:tblResultPartVeh')]")
         buttons[1].click()
@@ -144,7 +170,7 @@ def sunarp_event():
                     if "btnCargar" in id:
                         link.click()
                         time.sleep(1)
-                        shot = save_screenshot(driver=driver, element=link)
+                        screenshots.append(save_screenshot(driver=driver, element=link))
 
                         soup = BeautifulSoup(driver.page_source, 'html.parser')
                         data = []
@@ -188,7 +214,7 @@ def sunarp_event():
             time.sleep(5)
 
             img = driver.find_element(by=By.ID, value="frmVisualizar:imagenContent")
-            shot = save_screenshot(driver=driver, element=img)
+            screenshots.append(save_screenshot(driver=driver, element=img))
 
 
     except Exception as ex:
@@ -198,15 +224,22 @@ def sunarp_event():
         driver.close()
         driver.quit()
 
-    return results
+    return {"data": results, "screenshot" : screenshots}
+
 
 class HelloWorld(Resource):
     def get(self):
+        return "<p>Sunarp Servicio</p>"
+
+
+class GetEvents(Resource):
+    def get(self):
         data = sunarp_event()
 
-        return {'sata': data}
+        return {"resultado": data}
 
 api.add_resource(HelloWorld, '/')
+api.add_resource(GetEvents, '/GetEvents')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0')
